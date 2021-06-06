@@ -149,7 +149,12 @@ void LocalMapping::ProcessNewKeyFrame()
                 if(!pMP->IsInKeyFrame(mpCurrentKeyFrame))
                 {
                     pMP->AddObservation(mpCurrentKeyFrame, i);
+                    // Update map point's norm vector relative the keyframes's position
+                    // that could observe the map point.
                     pMP->UpdateNormalAndDepth();
+                    // Update the map point's descriptor by using the least mean descriptor 
+                    // among the descriptors of the 2d keypoints(corresponding to the 3d map point)
+                    // in the keyframes that could observe that map point.
                     pMP->ComputeDistinctiveDescriptors();
                 }
                 else // this can only happen for new stereo points inserted by the Tracking
@@ -179,7 +184,7 @@ void LocalMapping::MapPointCulling()
     else
         nThObs = 3;
     const int cnThObs = nThObs;
-
+    // Set some condition to find the bad map point and remove it from the map. 
     while(lit!=mlpRecentAddedMapPoints.end())
     {
         MapPoint* pMP = *lit;
@@ -304,6 +309,7 @@ void LocalMapping::CreateNewMapPoints()
             cv::Mat ray2 = Rwc2*xn2;
             const float cosParallaxRays = ray1.dot(ray2)/(cv::norm(ray1)*cv::norm(ray2));
 
+            // TODO(yu): why plus 1 to the cos value?
             float cosParallaxStereo = cosParallaxRays+1;
             float cosParallaxStereo1 = cosParallaxStereo;
             float cosParallaxStereo2 = cosParallaxStereo;
@@ -312,7 +318,7 @@ void LocalMapping::CreateNewMapPoints()
                 cosParallaxStereo1 = cos(2*atan2(mpCurrentKeyFrame->mb/2,mpCurrentKeyFrame->mvDepth[idx1]));
             else if(bStereo2)
                 cosParallaxStereo2 = cos(2*atan2(pKF2->mb/2,pKF2->mvDepth[idx2]));
-
+            // TODO(yu): what's the difference between cosParallaxRays and cosParallaxStereo?
             cosParallaxStereo = min(cosParallaxStereo1,cosParallaxStereo2);
 
             cv::Mat x3D;

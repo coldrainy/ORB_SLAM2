@@ -140,6 +140,9 @@ float ORBmatcher::RadiusByViewingCos(const float &viewCos)
 bool ORBmatcher::CheckDistEpipolarLine(const cv::KeyPoint &kp1,const cv::KeyPoint &kp2,const cv::Mat &F12,const KeyFrame* pKF2)
 {
     // Epipolar line in second image l = x1'F12 = [a b c]
+    // TODO(yu) need to deduct the epipolar line function.
+    // F * x describes the epipolar line on which the corresponding
+    // point x' on the other image must lie.
     const float a = kp1.pt.x*F12.at<float>(0,0)+kp1.pt.y*F12.at<float>(1,0)+F12.at<float>(2,0);
     const float b = kp1.pt.x*F12.at<float>(0,1)+kp1.pt.y*F12.at<float>(1,1)+F12.at<float>(2,1);
     const float c = kp1.pt.x*F12.at<float>(0,2)+kp1.pt.y*F12.at<float>(1,2)+F12.at<float>(2,2);
@@ -153,6 +156,8 @@ bool ORBmatcher::CheckDistEpipolarLine(const cv::KeyPoint &kp1,const cv::KeyPoin
 
     const float dsqr = num*num/den;
 
+    // Guess the 3.84 is from the chi-square table with 1 dimention
+    // and (1-0.05) probability.
     return dsqr<3.84*pKF2->mvLevelSigma2[kp2.octave];
 }
 
@@ -664,6 +669,10 @@ int ORBmatcher::SearchForTriangulation(KeyFrame *pKF1, KeyFrame *pKF2, cv::Mat F
     cv::Mat Cw = pKF1->GetCameraCenter();
     cv::Mat R2w = pKF2->GetRotation();
     cv::Mat t2w = pKF2->GetTranslation();
+    // TODO(yu): figure out what's C2's meaning?
+    // KF1's camera center position in KF2's camera center? or on the contrary?
+    // Since the line 663 said this block is to compute the epipole in the second image,
+    // the C2 might be KF1's camera center position according to KF2's camera center.
     cv::Mat C2 = R2w*Cw+t2w;
     const float invz = 1.0f/C2.at<float>(2);
     const float ex =pKF2->fx*C2.at<float>(0)*invz+pKF2->cx;
@@ -744,6 +753,7 @@ int ORBmatcher::SearchForTriangulation(KeyFrame *pKF1, KeyFrame *pKF2, cv::Mat F
                     {
                         const float distex = ex-kp2.pt.x;
                         const float distey = ey-kp2.pt.y;
+                        // TODO(yu): what's the number 100 meaning?
                         if(distex*distex+distey*distey<100*pKF2->mvScaleFactors[kp2.octave])
                             continue;
                     }
@@ -766,6 +776,9 @@ int ORBmatcher::SearchForTriangulation(KeyFrame *pKF1, KeyFrame *pKF2, cv::Mat F
                         float rot = kp1.angle-kp2.angle;
                         if(rot<0.0)
                             rot+=360.0f;
+                        // TODO(yu): the factor is 1/30, that means the histogram is 30 degress per bin
+                        // 2*pi would be seperated in to 12 bins, seems not match with the bin num
+                        // HISTO_LENGTH which is 30.
                         int bin = round(rot*factor);
                         if(bin==HISTO_LENGTH)
                             bin=0;
@@ -866,7 +879,7 @@ int ORBmatcher::Fuse(KeyFrame *pKF, const vector<MapPoint *> &vpMapPoints, const
         // Point must be inside the image
         if(!pKF->IsInImage(u,v))
             continue;
-
+        // z = bf/d, d = ul-ur
         const float ur = u-bf*invz;
 
         const float maxDistance = pMP->GetMaxDistanceInvariance();

@@ -57,7 +57,7 @@ double L1Scoring::score(const BowVector &v1, const BowVector &v2) const
       // v2_it = (first element >= v1_it.id)
     }
   }
-  
+  //TODO(Yu): read the paper <<scalable-recognition-with-a-vocabulary-tree>>
   // ||v - w||_{L1} = 2 + Sum(|v_i - w_i| - |v_i| - |w_i|) 
   //		for all i | v_i != 0 and w_i != 0 
   // (Nister, 2006)
