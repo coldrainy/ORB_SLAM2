@@ -288,7 +288,9 @@ void Sim3Solver::ComputeSim3(cv::Mat &P1, cv::Mat &P2)
     cv::Mat P3 = mR12i*Pr2;
 
     // Step 6: Scale
-
+    // 这里单目和双目输入的都是两帧相机坐标系下三维点坐标，为什么单目这里要求Scale，而双目却直接设定scale为1？
+    // 是否是因为单目输入的三维点中，其深度信息是通过尺度确定的，而非真正的三维点？
+    // 双目中是否会存在尺度漂移的问题？
     if(!mbFixScale)
     {
         double nom = Pr1.dot(P3);

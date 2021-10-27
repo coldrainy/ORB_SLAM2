@@ -143,7 +143,12 @@ public:
     std::vector<float> mvDepth;
 
     // Bag of Words Vector structures.
+    // 继承std::map<WordId, WordValue>, 存储当前关键帧中每个特征点对应的词典中的word id,以及对应的weight,即wordvalue.
+    // 若有两个特征点对应同一个word id,则相应的weight也会想加,存在wordvalue中.
     DBoW2::BowVector mBowVec;
+    // 继承std::map<NodeId, std::vector<unsigned int> >
+    // key为当前关键帧中,词典树中指定levelup的node中,距离每个特征点最近的node id.
+    // value为对应同一个node id的特征点在当前帧中的index的集合.
     DBoW2::FeatureVector mFeatVec;
 
     // ORB descriptor, each row associated to a keypoint.

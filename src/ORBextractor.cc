@@ -412,6 +412,8 @@ ORBextractor::ORBextractor(int _nfeatures, float _scaleFactor, int _nlevels,
     nfeatures(_nfeatures), scaleFactor(_scaleFactor), nlevels(_nlevels),
     iniThFAST(_iniThFAST), minThFAST(_minThFAST)
 {
+    // 缩放系数，一共7层，第一层为1.0，后面每一层乘以1.2
+    // 1.0, 1.2, 1.44, 2.07, 2.48, 2.98, 3.58
     mvScaleFactor.resize(nlevels);
     mvLevelSigma2.resize(nlevels);
     mvScaleFactor[0]=1.0f;
@@ -421,7 +423,8 @@ ORBextractor::ORBextractor(int _nfeatures, float _scaleFactor, int _nlevels,
         mvScaleFactor[i]=mvScaleFactor[i-1]*scaleFactor;
         mvLevelSigma2[i]=mvScaleFactor[i]*mvScaleFactor[i];
     }
-
+    // 缩放系数的倒数
+    // 1.0, 0.83, 0.69, 0.48, 0.40, 0.33, 0.27.
     mvInvScaleFactor.resize(nlevels);
     mvInvLevelSigma2.resize(nlevels);
     for(int i=0; i<nlevels; i++)
@@ -539,9 +542,10 @@ void ExtractorNode::DivideNode(ExtractorNode &n1, ExtractorNode &n2, ExtractorNo
 vector<cv::KeyPoint> ORBextractor::DistributeOctTree(const vector<cv::KeyPoint>& vToDistributeKeys, const int &minX,
                                        const int &maxX, const int &minY, const int &maxY, const int &N, const int &level)
 {
-    // Compute how many initial nodes   
+    // Compute how many initial nodes
+    // 根据图像长宽比，四舍五入计算初始node数量.
     const int nIni = round(static_cast<float>(maxX-minX)/(maxY-minY));
-
+    // 每个初始node对应的图像的宽度.
     const float hX = static_cast<float>(maxX-minX)/nIni;
 
     list<ExtractorNode> lNodes;
@@ -565,12 +569,14 @@ vector<cv::KeyPoint> ORBextractor::DistributeOctTree(const vector<cv::KeyPoint>&
     //Associate points to childs
     for(size_t i=0;i<vToDistributeKeys.size();i++)
     {
+        // 根据特征点横坐标计算特征点属于初始node中的哪个node，并放在node中.
         const cv::KeyPoint &kp = vToDistributeKeys[i];
         vpIniNodes[kp.pt.x/hX]->vKeys.push_back(kp);
     }
 
     list<ExtractorNode>::iterator lit = lNodes.begin();
-
+    // 遍历当前所有node，如果没有特征点，则删掉node，只有一个关键点
+    // 则bNoMore置为true， 不在进行细分.
     while(lit!=lNodes.end())
     {
         if(lit->vKeys.size()==1)
@@ -602,7 +608,7 @@ vector<cv::KeyPoint> ORBextractor::DistributeOctTree(const vector<cv::KeyPoint>&
         int nToExpand = 0;
 
         vSizeAndPointerToNode.clear();
-
+        // 对当前lNode中的node遍历一遍，将所有包含关键点数量大于1的node进行划分，并从lNode的顶部放入队列.
         while(lit!=lNodes.end())
         {
             if(lit->bNoMore)
@@ -658,7 +664,7 @@ vector<cv::KeyPoint> ORBextractor::DistributeOctTree(const vector<cv::KeyPoint>&
                         lNodes.front().lit = lNodes.begin();
                     }
                 }
-
+                // 每划分完成一个node，就将该node删掉
                 lit=lNodes.erase(lit);
                 continue;
             }
@@ -670,6 +676,8 @@ vector<cv::KeyPoint> ORBextractor::DistributeOctTree(const vector<cv::KeyPoint>&
         {
             bFinish = true;
         }
+        // 当前node的数量加上待划分的node数量×3大于需要的特征点数量时，
+        // 继续对待划分的node进行划分，一直划分到满足条件停止为止.
         else if(((int)lNodes.size()+nToExpand*3)>N)
         {
 
@@ -680,7 +688,7 @@ vector<cv::KeyPoint> ORBextractor::DistributeOctTree(const vector<cv::KeyPoint>&
 
                 vector<pair<int,ExtractorNode*> > vPrevSizeAndPointerToNode = vSizeAndPointerToNode;
                 vSizeAndPointerToNode.clear();
-
+                // 为什么要按照特征点数量从少到多的顺序来排列？
                 sort(vPrevSizeAndPointerToNode.begin(),vPrevSizeAndPointerToNode.end());
                 for(int j=vPrevSizeAndPointerToNode.size()-1;j>=0;j--)
                 {
@@ -739,7 +747,9 @@ vector<cv::KeyPoint> ORBextractor::DistributeOctTree(const vector<cv::KeyPoint>&
     }
 
     // Retain the best point in each node
+    // 保存并返回每个node中response最大的那个特征点
     vector<cv::KeyPoint> vResultKeys;
+    // nfeature,N 的关系是什么？
     vResultKeys.reserve(nfeatures);
     for(list<ExtractorNode>::iterator lit=lNodes.begin(); lit!=lNodes.end(); lit++)
     {
@@ -770,6 +780,10 @@ void ORBextractor::ComputeKeyPointsOctTree(vector<vector<KeyPoint> >& allKeypoin
 
     for (int level = 0; level < nlevels; ++level)
     {
+        // 限定当前level的图像边界，真正含有图像的坐标范围为:
+        // x~[EDGE_THRESHOLD, mvImagePyramid[level].cols - EDGE_THRESHOLD]
+        // y~[EDGE_THRESHOLD, mvImagePyramid[level].rows - EDGE_THRESHOLD]
+        // 这里选取的边界分别在x方向左右边界，和y方向下边界拓展了3.
         const int minBorderX = EDGE_THRESHOLD-3;
         const int minBorderY = minBorderX;
         const int maxBorderX = mvImagePyramid[level].cols-EDGE_THRESHOLD+3;
@@ -781,34 +795,45 @@ void ORBextractor::ComputeKeyPointsOctTree(vector<vector<KeyPoint> >& allKeypoin
         const float width = (maxBorderX-minBorderX);
         const float height = (maxBorderY-minBorderY);
 
+        // 将图像划分为<=30的栅格.
+        // 栅格列数
         const int nCols = width/W;
+        // 栅格行数
         const int nRows = height/W;
+        // 栅格实际宽度
         const int wCell = ceil(width/nCols);
+        // 栅格实际高度
         const int hCell = ceil(height/nRows);
 
+        // 遍历划分栅格的每行
         for(int i=0; i<nRows; i++)
         {
-            const float iniY =minBorderY+i*hCell;
+            // 每一行栅格的起始y坐标
+            const float iniY = minBorderY+i*hCell;
+            // 每行栅格的最大y坐标，这里比实际栅格拓展了6个像素
             float maxY = iniY+hCell+6;
-
+            // 栅格起始y坐标超出了实际含有图像的位置
             if(iniY>=maxBorderY-3)
                 continue;
             if(maxY>maxBorderY)
                 maxY = maxBorderY;
-
+            // 遍历划分栅格的每列
             for(int j=0; j<nCols; j++)
             {
+                // 每列栅格的起始横坐标
                 const float iniX =minBorderX+j*wCell;
+                // 每列栅格的最大横坐标，拓展6个像素
                 float maxX = iniX+wCell+6;
                 if(iniX>=maxBorderX-6)
                     continue;
                 if(maxX>maxBorderX)
                     maxX = maxBorderX;
-
+                // 在当前栅格范围内提取fast角点, intensity阈值为iniThFAST(20)
                 vector<cv::KeyPoint> vKeysCell;
                 FAST(mvImagePyramid[level].rowRange(iniY,maxY).colRange(iniX,maxX),
                      vKeysCell,iniThFAST,true);
 
+                // 若未提取成功，则降低阈值minThFAST(7)
                 if(vKeysCell.empty())
                 {
                     FAST(mvImagePyramid[level].rowRange(iniY,maxY).colRange(iniX,maxX),
@@ -819,6 +844,9 @@ void ORBextractor::ComputeKeyPointsOctTree(vector<vector<KeyPoint> >& allKeypoin
                 {
                     for(vector<cv::KeyPoint>::iterator vit=vKeysCell.begin(); vit!=vKeysCell.end();vit++)
                     {
+                        // 提取的角点坐标是在栅格坐标系下，要转到图像坐标系
+                        // 这里是不是应该加上iniX，和iniY，少了minBorderX和minBorderY？ 
+                        // 在后面有加上
                         (*vit).pt.x+=j*wCell;
                         (*vit).pt.y+=i*hCell;
                         vToDistributeKeys.push_back(*vit);
@@ -830,7 +858,7 @@ void ORBextractor::ComputeKeyPointsOctTree(vector<vector<KeyPoint> >& allKeypoin
 
         vector<KeyPoint> & keypoints = allKeypoints[level];
         keypoints.reserve(nfeatures);
-
+        // 利用4叉树结构找出位置均匀分布的特征点。
         keypoints = DistributeOctTree(vToDistributeKeys, minBorderX, maxBorderX,
                                       minBorderY, maxBorderY,mnFeaturesPerLevel[level], level);
 
@@ -848,6 +876,7 @@ void ORBextractor::ComputeKeyPointsOctTree(vector<vector<KeyPoint> >& allKeypoin
     }
 
     // compute orientations
+    // TODO:(ryan) 特征点orientation计算的原理.
     for (int level = 0; level < nlevels; ++level)
         computeOrientation(mvImagePyramid[level], allKeypoints[level], umax);
 }
@@ -1083,15 +1112,18 @@ void ORBextractor::operator()( InputArray _image, InputArray _mask, vector<KeyPo
 
         // preprocess the resized image
         Mat workingMat = mvImagePyramid[level].clone();
+        // 为什么要进行高斯模糊？在高斯模糊的图像上计算描述子？
         GaussianBlur(workingMat, workingMat, Size(7, 7), 2, 2, BORDER_REFLECT_101);
 
         // Compute the descriptors
+        // TODO(ryan):计算描述子的算法原理
         Mat desc = descriptors.rowRange(offset, offset + nkeypointsLevel);
         computeDescriptors(workingMat, keypoints, desc, pattern);
 
         offset += nkeypointsLevel;
 
         // Scale keypoint coordinates
+        // 在缩放的图像上提取的特征点坐标乘以相应的缩放系数，等价到正常图像上的坐标
         if (level != 0)
         {
             float scale = mvScaleFactor[level]; //getScale(level, firstLevel, scaleFactor);
@@ -1112,11 +1144,14 @@ void ORBextractor::ComputePyramid(cv::Mat image)
         Size sz(cvRound((float)image.cols*scale), cvRound((float)image.rows*scale));
         Size wholeSize(sz.width + EDGE_THRESHOLD*2, sz.height + EDGE_THRESHOLD*2);
         Mat temp(wholeSize, image.type()), masktemp;
+        //浅拷贝，后续对temp的操作同样会作用到mvImagePyramid[level]上。
+        //这里将图像分别进行不同程度的缩小，存储在mvImagePyramid中。
         mvImagePyramid[level] = temp(Rect(EDGE_THRESHOLD, EDGE_THRESHOLD, sz.width, sz.height));
 
         // Compute the resized image
         if( level != 0 )
         {
+            // 将上一个level的图像，resize到当前level中，当前level的size为sz，每个level都比上一个level缩小。
             resize(mvImagePyramid[level-1], mvImagePyramid[level], sz, 0, 0, INTER_LINEAR);
 
             copyMakeBorder(mvImagePyramid[level], temp, EDGE_THRESHOLD, EDGE_THRESHOLD, EDGE_THRESHOLD, EDGE_THRESHOLD,

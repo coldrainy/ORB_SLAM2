@@ -35,9 +35,11 @@ public:
     ExtractorNode():bNoMore(false){}
 
     void DivideNode(ExtractorNode &n1, ExtractorNode &n2, ExtractorNode &n3, ExtractorNode &n4);
-
+    // 该node中含有的特征点.
     std::vector<cv::KeyPoint> vKeys;
+    // 该node包含的图像的四个角点坐标
     cv::Point2i UL, UR, BL, BR;
+    // 记录该node在队列中的位置
     std::list<ExtractorNode>::iterator lit;
     bool bNoMore;
 };

@@ -63,6 +63,7 @@ protected:
   const ORBVocabulary* mpVoc;
 
   // Inverted file
+  // 以单词的word id为索引,每个元素为一个list,存储包含该word的关键帧
   std::vector<list<KeyFrame*> > mvInvertedFile;
 
   // Mutex

@@ -181,7 +181,8 @@ int ORBmatcher::SearchByBoW(KeyFrame* pKF,Frame &F, vector<MapPoint*> &vpMapPoin
     DBoW2::FeatureVector::const_iterator Fit = F.mFeatVec.begin();
     DBoW2::FeatureVector::const_iterator KFend = vFeatVecKF.end();
     DBoW2::FeatureVector::const_iterator Fend = F.mFeatVec.end();
-
+    // 找出参考关键帧和当前关键帧中位于同一node的特征点中,每一个关键帧中的地图点对应的当前帧的特征点
+    // 存在vpMapPointMatches中.index为当前帧中的特征点的索引,元素为对应的关联上的关键帧中的地图点.
     while(KFit != KFend && Fit != Fend)
     {
         if(KFit->first == Fit->first)
@@ -240,6 +241,7 @@ int ORBmatcher::SearchByBoW(KeyFrame* pKF,Frame &F, vector<MapPoint*> &vpMapPoin
 
                         if(mbCheckOrientation)
                         {
+                            // 当前帧和关键帧匹配上的特征点的角度差
                             float rot = kp.angle-F.mvKeys[bestIdxF].angle;
                             if(rot<0.0)
                                 rot+=360.0f;
@@ -268,7 +270,7 @@ int ORBmatcher::SearchByBoW(KeyFrame* pKF,Frame &F, vector<MapPoint*> &vpMapPoin
         }
     }
 
-
+    // 检查匹配上的特征点的旋转一致性,找出元素数量最多的三个bin,作为匹配点,其余匹配删除
     if(mbCheckOrientation)
     {
         int ind1=-1;
@@ -1347,7 +1349,12 @@ int ORBmatcher::SearchByProjection(Frame &CurrentFrame, const Frame &LastFrame, 
     for(int i=0;i<HISTO_LENGTH;i++)
         rotHist[i].reserve(500);
     const float factor = 1.0f/HISTO_LENGTH;
-
+    // 坐标系的定义及R t的表示方式,左乘右乘
+    // Rcw 可理解为在c坐标系下,w系的表示.即对于Rcw = [r1, r2, r3]
+    // r1, r2, r3,分别表示w系的基向量在c系中的表示.
+    // tcw 可理解为在c系下, w系的原点坐标, tcw向量从c系原点指向w系原点.
+    // Pw = [X, Y, Z]^t
+    // Rcw * Pw = X*r1 + Y*r2 + Z*r3
     const cv::Mat Rcw = CurrentFrame.mTcw.rowRange(0,3).colRange(0,3);
     const cv::Mat tcw = CurrentFrame.mTcw.rowRange(0,3).col(3);
 
@@ -1394,8 +1401,11 @@ int ORBmatcher::SearchByProjection(Frame &CurrentFrame, const Frame &LastFrame, 
                 float radius = th*CurrentFrame.mvScaleFactors[nLastOctave];
 
                 vector<size_t> vIndices2;
-
-                if(bForward)
+                // NOTE 尺度越大,图像越小
+                // 以下可以这么理解，例如一个有一定面积的圆点，在某个尺度n下它是一个特征点
+                // 当前进时，圆点的面积增大，在某个尺度m下它是一个特征点，由于面积增大，则需要在更高的尺度下才能检测出来
+                // 因此m>=n，对应前进的情况，nCurOctave>=nLastOctave。后退的情况可以类推
+                if(bForward) // 前进,则上一帧兴趣点在所在的尺度nLastOctave<=nCurOctave
                     vIndices2 = CurrentFrame.GetFeaturesInArea(u,v, radius, nLastOctave);
                 else if(bBackward)
                     vIndices2 = CurrentFrame.GetFeaturesInArea(u,v, radius, 0, nLastOctave);

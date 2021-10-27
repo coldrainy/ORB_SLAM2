@@ -302,8 +302,9 @@ void Tracking::Track()
             if(mState==OK)
             {
                 // Local Mapping might have changed some MapPoints tracked in last frame
+                // 检查上一帧中有没有地图点被local mapping线程更改，有的话就先改掉。
                 CheckReplacedInLastFrame();
-
+                // 速度为0或者2帧以内有过重定位,则直接跟踪参考关键帧.
                 if(mVelocity.empty() || mCurrentFrame.mnId<mnLastRelocFrameId+2)
                 {
                     bOK = TrackReferenceKeyFrame();
@@ -508,12 +509,15 @@ void Tracking::Track()
 
 void Tracking::StereoInitialization()
 {
+    // 超过五百个关键点再进行初始化。
     if(mCurrentFrame.N>500)
     {
         // Set Frame pose to the origin
+        // 设置初始位置为单位矩阵
         mCurrentFrame.SetPose(cv::Mat::eye(4,4,CV_32F));
 
         // Create KeyFrame
+        // 将初始化帧设置为关键帧
         KeyFrame* pKFini = new KeyFrame(mCurrentFrame,mpMap,mpKeyFrameDB);
 
         // Insert KeyFrame in the map
@@ -526,14 +530,14 @@ void Tracking::StereoInitialization()
             if(z>0)
             {
                 cv::Mat x3D = mCurrentFrame.UnprojectStereo(i);
-                MapPoint* pNewMP = new MapPoint(x3D,pKFini,mpMap);
-                pNewMP->AddObservation(pKFini,i);
-                pKFini->AddMapPoint(pNewMP,i);
-                pNewMP->ComputeDistinctiveDescriptors();
-                pNewMP->UpdateNormalAndDepth();
-                mpMap->AddMapPoint(pNewMP);
+                MapPoint* pNewMP = new MapPoint(x3D,pKFini,mpMap);   //初始化时每个特征点新建一个地图点
+                pNewMP->AddObservation(pKFini,i);                    //添加当前地图点的观测关键帧，以及在关键中的index.
+                pKFini->AddMapPoint(pNewMP,i);                       //在关键帧中添加该地图点，以及index
+                pNewMP->ComputeDistinctiveDescriptors();             //使用从所有观测到该地图点的关键帧中与该地图点对应的descriptor的least median，作为该点的descriptor
+                pNewMP->UpdateNormalAndDepth();                      //更新地图点的最大最小距离和平均观测向量
+                mpMap->AddMapPoint(pNewMP);                          //地图中添加该地图点
 
-                mCurrentFrame.mvpMapPoints[i]=pNewMP;
+                mCurrentFrame.mvpMapPoints[i]=pNewMP;                //当前帧中添加该地图点
             }
         }
 
@@ -756,6 +760,8 @@ void Tracking::CheckReplacedInLastFrame()
 
 bool Tracking::TrackReferenceKeyFrame()
 {
+    // 疑问:这里只计算了mCurrentFrame的bow,但是并未计算mpReferenceKF的bow,是通过多线程在localMapping中计算的吗?
+    // 如果是多线程计算的,如何保证当程序进入到这里时,mpReferenceKF的bow已经计算完成?
     // Compute Bag of Words vector
     mCurrentFrame.ComputeBoW();
 
@@ -763,7 +769,7 @@ bool Tracking::TrackReferenceKeyFrame()
     // If enough matches are found we setup a PnP solver
     ORBmatcher matcher(0.7,true);
     vector<MapPoint*> vpMapPointMatches;
-
+    // vpMapPointMatches的index是mCurrentFrame中的特征点的索引.元素是对应索引的特征点匹配上的参考关键帧中的MapPoint
     int nmatches = matcher.SearchByBoW(mpReferenceKF,mCurrentFrame,vpMapPointMatches);
 
     if(nmatches<15)
@@ -771,11 +777,13 @@ bool Tracking::TrackReferenceKeyFrame()
 
     mCurrentFrame.mvpMapPoints = vpMapPointMatches;
     mCurrentFrame.SetPose(mLastFrame.mTcw);
-
+    // 使用与关键帧匹配上的地图点来优化当前帧的位姿.
     Optimizer::PoseOptimization(&mCurrentFrame);
 
     // Discard outliers
     int nmatchesMap = 0;
+    // N是提取的二维特征点的数量,但并不是所有的二位特征点都匹配上了三维地图点
+    // 所以在用二位特征点的索引去取三维地图点时,要判断该特征点是否存在.
     for(int i =0; i<mCurrentFrame.N; i++)
     {
         if(mCurrentFrame.mvpMapPoints[i])
@@ -843,7 +851,8 @@ void Tracking::UpdateLastFrame()
         {
             bCreateNew = true;
         }
-
+        // 使用双目匹配得到的特征点三角化得到地图点.仅用于跟踪,不放到地图里.
+        // 跟踪完成后记录到mlpTemporalPoints里面的点会删掉.
         if(bCreateNew)
         {
             cv::Mat x3D = mLastFrame.UnprojectStereo(i);
@@ -870,6 +879,7 @@ bool Tracking::TrackWithMotionModel()
 
     // Update last frame pose according to its reference keyframe
     // Create "visual odometry" points if in Localization Mode
+    // 使用上一帧中的双目匹配点生成临时三维点,存在mLastFrame.mvpMapPoints中.
     UpdateLastFrame();
 
     mCurrentFrame.SetPose(mVelocity*mLastFrame.mTcw);
@@ -882,6 +892,7 @@ bool Tracking::TrackWithMotionModel()
         th=15;
     else
         th=7;
+    // 使用上一帧的地图点投影到当前帧,寻找当前帧的匹配点,并将匹配上的地图点放在当前帧的地图点结构中CurrentFrame.mvpMapPoints
     int nmatches = matcher.SearchByProjection(mCurrentFrame,mLastFrame,th,mSensor==System::MONOCULAR);
 
     // If few matches, uses a wider window search
@@ -1345,6 +1356,7 @@ bool Tracking::Relocalization()
 
     // Relocalization is performed when tracking is lost
     // Track Lost: Query KeyFrame Database for keyframe candidates for relocalisation
+    // 找到重定位候选关键帧.
     vector<KeyFrame*> vpCandidateKFs = mpKeyFrameDB->DetectRelocalizationCandidates(&mCurrentFrame);
 
     if(vpCandidateKFs.empty())
@@ -1366,7 +1378,7 @@ bool Tracking::Relocalization()
     vbDiscarded.resize(nKFs);
 
     int nCandidates=0;
-
+    // 遍历每一个候选关键帧
     for(int i=0; i<nKFs; i++)
     {
         KeyFrame* pKF = vpCandidateKFs[i];
@@ -1374,6 +1386,7 @@ bool Tracking::Relocalization()
             vbDiscarded[i] = true;
         else
         {
+            // 查找当前帧和关键帧地图点匹配上的特征点,index为特征点索引,元素为地图点
             int nmatches = matcher.SearchByBoW(pKF,mCurrentFrame,vvpMapPointMatches[i]);
             if(nmatches<15)
             {
@@ -1382,6 +1395,7 @@ bool Tracking::Relocalization()
             }
             else
             {
+                // 对于匹配点大于15点的匹配,对该关键帧和当前帧构造pnp solver.
                 PnPsolver* pSolver = new PnPsolver(mCurrentFrame,vvpMapPointMatches[i]);
                 pSolver->SetRansacParameters(0.99,10,300,4,0.5,5.991);
                 vpPnPsolvers[i] = pSolver;
@@ -1394,7 +1408,7 @@ bool Tracking::Relocalization()
     // Until we found a camera pose supported by enough inliers
     bool bMatch = false;
     ORBmatcher matcher2(0.9,true);
-
+    // 候选帧不为0并且未找到匹配帧时,继续寻找
     while(nCandidates>0 && !bMatch)
     {
         for(int i=0; i<nKFs; i++)
@@ -1408,6 +1422,7 @@ bool Tracking::Relocalization()
             bool bNoMore;
 
             PnPsolver* pSolver = vpPnPsolvers[i];
+            // pnp solver迭代.
             cv::Mat Tcw = pSolver->iterate(5,bNoMore,vbInliers,nInliers);
 
             // If Ransac reachs max. iterations discard keyframe

@@ -1213,7 +1213,12 @@ void TemplatedVocabulary<TDescriptor,F>::transform
 }
 
 // --------------------------------------------------------------------------
-
+// m_nodes是保存vacabulary的k-d tree,树的叶子节点中存的是world, 每个world有个world ID.
+// @param feature:待查询的feature
+// @param word_id:距离待查询feature最近的word id.
+// @param weight:距离待查询feature最近的word权重.
+// @param nid:指定层数中,距离待查询feature最近的node id.
+// @param levelsup:从下往上数,指定层数
 template<class TDescriptor, class F>
 void TemplatedVocabulary<TDescriptor,F>::transform(const TDescriptor &feature, 
   WordId &word_id, WordValue &weight, NodeId *nid, int levelsup) const

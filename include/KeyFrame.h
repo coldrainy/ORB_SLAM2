@@ -144,7 +144,10 @@ public:
     long unsigned int mnLoopQuery;
     int mnLoopWords;
     float mLoopScore;
+    // 记录重定位时该关键帧被那哪一帧查询,记录其帧ID.
+    // 防止在一次重定位查询中,多次重复查询该关键帧.
     long unsigned int mnRelocQuery;
+    // 重定位时与被查询帧包含的相同的单词的数量.
     int mnRelocWords;
     float mRelocScore;
 

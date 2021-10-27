@@ -69,11 +69,15 @@ public:
     inline int GetFound(){
         return mnFound;
     }
-
+    // 使用所有可以观察到该MapPoint的关键帧中，该MapPoint的descreptor
+    // 的least median值来作为该MapPoint的descriptor。
+    // 但是，为什么要用least median?
     void ComputeDistinctiveDescriptors();
 
     cv::Mat GetDescriptor();
-
+    // 更新平均观测向量和由于scale导致的最大最小距离
+    // mNormalVector,mfMinDistance,mfMaxDistance
+    // 但还不清楚这三个量是用来干什么的?
     void UpdateNormalAndDepth();
 
     float GetMinDistanceInvariance();
